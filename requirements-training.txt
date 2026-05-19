@@ -1,0 +1,4 @@
+numpy<2.0
+ultralytics
+huggingface_hub
+PyYAML

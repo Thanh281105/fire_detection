@@ -1,0 +1,16 @@
+split,group,group_name,images,objects,background_images,background_ratio,objects_per_image
+train,01,positive_standard,7873,20118,0,0.0,2.5553
+train,02,alley_context,1803,4228,208,0.1154,2.345
+train,03,hard_negative,562,0,562,1.0,0.0
+train,04,sahi_small_objects,606,2197,0,0.0,3.6254
+train,05,ambient_null,2981,23,2975,0.998,0.0077
+valid,01,positive_standard,633,1964,0,0.0,3.1027
+valid,02,alley_context,44,171,0,0.0,3.8864
+valid,03,hard_negative,20,0,20,1.0,0.0
+valid,04,sahi_small_objects,20,79,0,0.0,3.95
+valid,05,ambient_null,240,0,240,1.0,0.0
+test,01,positive_standard,543,2056,0,0.0,3.7864
+test,02,alley_context,44,210,0,0.0,4.7727
+test,03,hard_negative,20,0,20,1.0,0.0
+test,04,sahi_small_objects,20,86,0,0.0,4.3
+test,05,ambient_null,206,2,204,0.9903,0.0097

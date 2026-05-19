@@ -1,0 +1,63 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Notebook/runtime checkpoints
+.ipynb_checkpoints/
+
+# Large datasets and generated training data
+datasets/
+work/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Model checkpoints and exported models
+runs/
+weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.mlmodel
+*.torchscript
+
+# Cloud/ML experiment outputs
+wandb/
+mlruns/
+tensorboard/
+events.out.tfevents*
+
+# Local analysis/cache folders
+.pydeps/
+.cache/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
