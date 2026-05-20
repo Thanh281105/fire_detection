@@ -18,6 +18,13 @@ set -euo pipefail
 #   VAL_TTA=0
 #   RESTORE_FROM_GCS=1
 
+if [[ -f ".env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
 PROFILE="${PROFILE:-vertex_final}"
 if [[ -z "${GCS_DIR:-}" ]]; then
   case "${PROFILE}" in

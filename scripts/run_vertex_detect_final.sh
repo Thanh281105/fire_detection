@@ -24,6 +24,13 @@ set -euo pipefail
 #   RESTORE_FROM_GCS=1
 #   FINETUNE_RESTORE_FROM_GCS=1
 
+if [[ -f ".env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
 PROFILE="${PROFILE:-vertex_detect_final}"
 if [[ -z "${FINETUNE_PROFILE:-}" ]]; then
   if [[ "${PROFILE}" == "vertex_detect_a100" ]]; then
