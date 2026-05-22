@@ -20,7 +20,15 @@
 \usepackage{hyperref}
 \usepackage{caption}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds,shapes.geometric}
+
+\definecolor{paperblue}{RGB}{70,105,150}
+\definecolor{paperorange}{RGB}{215,120,55}
+\definecolor{papergreen}{RGB}{110,150,110}
+\definecolor{softblue}{RGB}{226,236,248}
+\definecolor{softorange}{RGB}{252,232,215}
+\definecolor{softgreen}{RGB}{229,241,226}
+\definecolor{darkgray}{RGB}{45,45,45}
 
 \hypersetup{
     colorlinks=true,
@@ -503,8 +511,171 @@ The project uses segmentation labels to build high-quality object boundaries, bu
 
 \begin{figure}[H]
 \centering
-\safeincludegraphics[width=0.92\textwidth]{figures/kien_truc_yolo11_final_detect.png}
-\caption{Final YOLO11x detection architecture diagram used in the report artifacts.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    font=\sffamily,
+    >=Latex,
+    node distance=1.0cm and 1.2cm,
+    data/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=paperblue,
+        fill=softblue,
+        line width=0.9pt,
+        minimum width=2.4cm,
+        minimum height=0.85cm,
+        align=center,
+        font=\sffamily\small\bfseries
+    },
+    process/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=paperorange,
+        fill=softorange,
+        line width=0.9pt,
+        minimum width=2.5cm,
+        minimum height=0.85cm,
+        align=center,
+        font=\sffamily\small\bfseries
+    },
+    model/.style={
+        rectangle,
+        draw=papergreen,
+        fill=softgreen,
+        line width=0.9pt,
+        minimum width=2.4cm,
+        minimum height=0.85cm,
+        align=center,
+        font=\sffamily\small\bfseries
+    },
+    metric/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=darkgray,
+        fill=white,
+        line width=0.85pt,
+        minimum width=2.4cm,
+        minimum height=0.82cm,
+        align=center,
+        font=\sffamily\small\bfseries
+    },
+    arrow/.style={
+        ->,
+        line width=0.95pt,
+        draw=darkgray
+    },
+    oarrow/.style={
+        ->,
+        line width=1.05pt,
+        draw=paperorange
+    },
+    archlabel/.style={
+        font=\sffamily\footnotesize,
+        text=darkgray,
+        align=center
+    },
+    grouplabel/.style={
+        font=\sffamily\footnotesize\bfseries,
+        text=darkgray
+    },
+    groupbox/.style={
+        draw=gray!70,
+        dashed,
+        rounded corners=4pt,
+        inner sep=7pt
+    }
+]
+
+\node[font=\sffamily\bfseries\Large, align=center] (title)
+at (0,0) {Architecture of the Final YOLO11x Fire/Smoke Detection Pipeline};
+
+\node[data, below=1.2cm of title, xshift=-8.4cm] (kaggle) {Kaggle\\Fire/Smoke};
+\node[data, below=0.35cm of kaggle] (google) {Google\\Images};
+\node[data, below=0.35cm of google] (vietnam) {Vietnam\\Alleyways};
+\node[data, below=0.35cm of vietnam] (hardneg) {Hard\\Negatives};
+
+\node[model, right=2.1cm of google] (rawpool) {Raw Image\\Pool};
+
+\coordinate (mergepoint) at ($(rawpool.west)+(-0.7,0)$);
+
+\draw[arrow] (kaggle.east) -- (mergepoint);
+\draw[arrow] (google.east) -- (mergepoint);
+\draw[arrow] (vietnam.east) -- (mergepoint);
+\draw[arrow] (hardneg.east) -- (mergepoint);
+\draw[arrow] (mergepoint) -- (rawpool.west);
+
+\node[groupbox, fit=(kaggle)(google)(vietnam)(hardneg)(rawpool)] (g1) {};
+\node[grouplabel, anchor=south west] at (g1.north west) {Data collection};
+
+\node[process, right=2.7cm of rawpool, yshift=0.8cm] (qa) {Label QA};
+\node[process, below=0.55cm of qa] (segmask) {Segmentation\\Masks};
+\node[process, right=1.6cm of qa] (split) {Anti-leakage\\Split};
+\node[process, below=0.55cm of split] (dedup) {Duplicate\\Removal};
+\node[process, right=1.8cm of dedup] (detectset) {YOLO Detect\\Dataset};
+
+\draw[arrow] (rawpool.east) -- ++(0.6,0) |- node[pos=0.25, above, font=\scriptsize] {polygon labels} (segmask.west);
+\draw[arrow] (segmask.north) -- (qa.south);
+\draw[arrow] (qa.east) -- (split.west);
+\draw[arrow] (split.south) -- (dedup.north);
+\draw[arrow] (segmask.east) -- node[midway, below, font=\scriptsize] {SHA1 / dHash} (dedup.west);
+\draw[arrow] (dedup.east) -- node[midway, above, font=\scriptsize] {mask $\rightarrow$ bbox} (detectset.west);
+
+\node[archlabel, below=0.15cm of detectset] {\texttt{fire} + \texttt{smoke} $\rightarrow$ \texttt{fire\_smoke}};
+
+\node[groupbox, fit=(qa)(segmask)(split)(dedup)(detectset)] (g2) {};
+\node[grouplabel, anchor=south west] at (g2.north west) {Annotation and dataset preparation};
+
+\node[model, below=2.0cm of detectset, xshift=-5.7cm] (inputimg) {Input\\Image};
+\node[model, right=1.25cm of inputimg] (backbone) {YOLO11x\\Backbone};
+\node[model, right=1.25cm of backbone] (neck) {Multi-scale\\Neck};
+\node[model, right=1.25cm of neck] (head) {Detection\\Head};
+\node[model, right=1.25cm of head] (output) {BBox + Conf.\\\texttt{fire\_smoke}};
+
+\draw[oarrow] (inputimg.east) -- (backbone.west);
+\draw[oarrow] (backbone.east) -- (neck.west);
+\draw[oarrow] (neck.east) -- (head.west);
+\draw[oarrow] (head.east) -- (output.west);
+
+\draw[oarrow] (detectset.south) -- ++(0,-0.75) -| (inputimg.north);
+
+\node[archlabel, above=0.12cm of backbone] {$F_1,F_2,F_3$};
+\node[archlabel, above=0.12cm of neck] {$P_3,P_4,P_5$};
+\node[archlabel, above=0.12cm of output] {$\hat{b},\hat{c}$};
+
+\node[groupbox, fit=(inputimg)(backbone)(neck)(head)(output)] (g3) {};
+\node[grouplabel, anchor=south west] at (g3.north west) {YOLO11x detector};
+
+\node[metric, below=1.55cm of backbone, xshift=-0.8cm] (stage1) {Stage 1\\moderate aug.};
+\node[metric, right=1.1cm of stage1] (stage2) {Stage 2\\no mosaic, low LR};
+\node[metric, right=1.1cm of stage2] (eval) {Evaluation\\mAP@50, P, R, F1};
+\node[metric, right=1.1cm of eval] (deploy) {Deployment\\ONNX / TensorRT};
+
+\draw[arrow] (stage1.east) -- (stage2.west);
+\draw[arrow] (stage2.east) -- (eval.west);
+\draw[arrow] (eval.east) -- (deploy.west);
+
+\coordinate (detmid) at ($(backbone.south)!0.5!(neck.south)$);
+\draw[arrow] (detmid) -- ++(0,-0.55) -| (stage1.north);
+
+\node[archlabel, below=0.10cm of stage1] {L4: 1024, batch 4};
+\node[archlabel, below=0.10cm of stage2] {no-mosaic fine-tune};
+
+\node[groupbox, fit=(stage1)(stage2)(eval)(deploy)] (g4) {};
+\node[grouplabel, anchor=south west] at (g4.north west) {Training and deployment};
+
+\node[
+    archlabel,
+    below=0.55cm of g4,
+    text width=10.8cm,
+    font=\sffamily\footnotesize\itshape
+] {
+Segmentation masks are retained as source annotations and converted to
+bounding boxes for the final single-class YOLO11x detector.
+};
+
+\end{tikzpicture}%
+}
+\caption{Final YOLO11x detection architecture and training pipeline.}
 \label{fig:yolo11-arch}
 \end{figure}
 
