@@ -1361,8 +1361,18 @@ def validate_all_groups_present(assigned: dict[str, list[SourceImage]]) -> None:
 
 
 def make_zip(output: Path) -> Path:
-    archive_base = output.with_suffix("")
-    archive_path = Path(shutil.make_archive(str(archive_base), "zip", output))
+    archive_path = output.with_suffix(".zip")
+    excluded_dirs = {"_raw_from_zip", "_work"}
+    if archive_path.exists():
+        archive_path.unlink()
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(output.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(output)
+            if relative.parts and relative.parts[0] in excluded_dirs:
+                continue
+            zf.write(path, relative.as_posix())
     return archive_path
 
 

@@ -453,7 +453,7 @@ Rationale:
 
 ## 6. Chiến Lược Huấn Luyện
 
-### 6.1 Detection Final: Two-Stage Training
+### 6.1 Detection Final: Stage 1, Stage 2 Và Full-Image Fine-Tune
 
 Script chính:
 
@@ -461,7 +461,7 @@ Script chính:
 bash scripts/run_vertex_detect_final.sh
 ```
 
-Stage 1: main train
+#### Stage 1: Main Train Trên Dataset Sliced Train
 
 | Tham số | Giá trị |
 |---|---:|
@@ -480,7 +480,22 @@ Stage 1: main train
 | AMP | True |
 | Cache | disk |
 
-Stage 2: fine-tune
+Stage 1 khởi tạo từ `yolo11x.pt` và train trên detect dataset được chuyển từ segmentation mask. Train split có slicing có kiểm soát cho các nhóm dữ liệu hiếm/object nhỏ, trong khi valid/test giữ ảnh gốc để metric không bị dễ hóa. Mục tiêu của Stage 1 là tạo checkpoint nền đủ mạnh cho bài toán `fire_smoke`.
+
+Kết quả quan sát sau Stage 1:
+
+| Chỉ số | Giá trị quan sát |
+|---|---:|
+| Best checkpoint | `runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt` |
+| Epoch tốt nhất | khoảng epoch 96 |
+| Validation mAP@50 | khoảng 0.445 |
+| Validation mAP@50:95 | khoảng 0.253 |
+| Test mAP@50 | khoảng 0.427 |
+| Test mAP@50:95 | khoảng 0.239 |
+
+Kết quả này cho thấy mô hình đã học được tín hiệu fire/smoke nhưng còn thấp so với mục tiêu ban đầu. Nguyên nhân có thể đến từ độ khó của bài toán, object nhỏ, hard negative, và khoảng cách phân phối giữa train có slicing với valid/test full image.
+
+#### Stage 2: Fine-Tune Từ Best Của Stage 1
 
 | Tham số | Giá trị |
 |---|---:|
@@ -495,11 +510,71 @@ Stage 2: fine-tune
 | Scale | 0.20 |
 | Patience | 20 |
 
-Rationale:
+Stage 2 không resume optimizer state từ `last.pt`, mà khởi tạo một run fine-tune mới từ Stage 1 `best.pt`. Cách này giữ trọng số tốt nhất đã học được nhưng tránh kéo theo trạng thái optimizer của giai đoạn train dài.
+
+Kết quả quan sát trong các epoch đầu Stage 2:
+
+| Epoch | Validation mAP@50 | Validation mAP@50:95 | Ghi chú |
+|---:|---:|---:|---|
+| 1 | 0.431 | 0.246 | Fine-tune vừa bắt đầu, metric gần Stage 1 |
+| 2 | 0.442 | 0.256 | Có cải thiện nhẹ |
+| 3 | 0.444 | 0.258 | Ổn định |
+| 5 | 0.447 | 0.259 | Tăng chậm |
+| 7 | 0.454 | 0.262 | Tốt nhất trong log hiện có |
+
+Rationale Stage 1/2:
 
 - Stage 1 dùng augmentation để tăng robustness.
 - Stage 2 tắt mosaic/mixup để mô hình học lại phân phối ảnh thật.
 - LR thấp giúp refine boundary/box mà không phá pretrained representation.
+
+#### Stage 3: Fine-Tune Lại Với Full-Image Dataset
+
+Sau khi Stage 2 chỉ cải thiện chậm, dự án bổ sung một nhánh fine-tune mới trên dataset full-image. Mục tiêu là giảm mismatch giữa train và valid/test: train không còn dùng slice/crop, mà học trực tiếp trên ảnh gốc giống cách mô hình được đánh giá.
+
+Dataset full-image được rebuild từ raw exports:
+
+```text
+datasets/raw
+  -> prepare_yolo11_seg_dataset.py --skip-slicing --dedupe-near-duplicates
+  -> work/fire_vn_yolo11seg_v1_fullimg
+  -> fire_vn_yolo11seg_v1_fullimg.zip
+  -> HF branch full-image-v1
+```
+
+Artifact đã upload:
+
+```text
+https://huggingface.co/datasets/thanhhoangnvbg/fire-vn-yolo11seg-v1/tree/full-image-v1
+```
+
+Thống kê dataset full-image sau clean:
+
+| Split | Images | Objects sau convert detect | Background images |
+|---|---:|---:|---:|
+| Train | 9,943 | 20,070 | 2,978 |
+| Valid | 841 | 1,724 | 252 |
+| Test | 733 | 1,469 | 219 |
+| Total | 11,517 | 23,263 | 3,449 |
+
+Profile fine-tune full-image:
+
+| Tham số | Giá trị |
+|---|---:|
+| Profile | `vertex_detect_fullimage_finetune_l4` |
+| Init weights | Stage 2 `best.pt` |
+| Dataset revision | `full-image-v1` |
+| Image size | 1024 |
+| Epochs | 25 |
+| Batch | 4 |
+| LR | 0.00005 |
+| Warmup | 1 epoch |
+| Mosaic | 0.0 |
+| MixUp | 0.0 |
+| Scale | 0.15 |
+| Patience | 10 |
+
+Stage 3 là bước cứu/rà soát phân phối, không thay thế Stage 1/2. Nếu Stage 2 tiếp tục plateau quanh mAP@50 0.45, full-image fine-tune sẽ kiểm tra giả thuyết rằng slicing trong train đang làm mô hình lệch so với valid/test full image.
 
 ### 6.2 Loss Và Loss Weighting
 
@@ -657,7 +732,7 @@ F1 = 2 * Precision * Recall / (Precision + Recall)
 
 ### 8.2 Evaluation Workflow
 
-Test split validation:
+Stage 1 validation/test:
 
 ```bash
 python scripts/train_yolo11_detect.py \
@@ -665,15 +740,32 @@ python scripts/train_yolo11_detect.py \
   --val-test
 ```
 
-Per-group evaluation:
+Stage 2 fine-tune validation/test:
 
 ```bash
-python scripts/evaluate_yolo11_detect_groups.py \
-  --model runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt \
-  --dataset datasets/fire_vn_yolo11det_fire_smoke_v2 \
-  --split test \
-  --imgsz 1024 \
-  --overwrite
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_finetune_l4 \
+  --init-weights runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt \
+  --skip-download \
+  --skip-convert \
+  --val-test \
+  --test-imgsz 1024 \
+  --exist-ok
+```
+
+Stage 3 full-image fine-tune validation/test:
+
+```bash
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_fullimage_finetune_l4 \
+  --dataset-revision full-image-v1 \
+  --dataset-zip fire_vn_yolo11seg_v1_fullimg.zip \
+  --seg-dataset-dir work/fire_vn_yolo11seg_v1_fullimg \
+  --det-dataset-dir work/fire_vn_yolo11det_fire_smoke_fullimg \
+  --init-weights runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt \
+  --val-test \
+  --test-imgsz 1024 \
+  --exist-ok
 ```
 
 ### 8.3 Vì Sao Cần Per-Group Evaluation
@@ -687,17 +779,15 @@ Overall mAP có thể che giấu lỗi ở nhóm dữ liệu nhỏ. Dự án tá
 
 ### 8.4 Bảng Kết Quả
 
-Kết quả định lượng sẽ được cập nhật sau khi training job hoàn tất và sinh `results.csv`.
+Các kết quả dưới đây được ghi theo log/job đã chạy. Stage 3 là bước mới được thêm sau khi Stage 2 có dấu hiệu plateau, vì vậy metric Stage 3 sẽ được cập nhật sau khi run full-image hoàn tất.
 
-| Metric | Validation | Test | Ghi chú |
-|---|---:|---:|---|
-| Precision | TBD | TBD | Từ YOLO validation |
-| Recall | TBD | TBD | Quan trọng cho cảnh báo sớm |
-| F1-score | TBD | TBD | Cân bằng precision/recall |
-| mAP@50 | TBD | TBD | Mục tiêu chính |
-| mAP@50:95 | TBD | TBD | Đánh giá localization chặt hơn |
+| Giai đoạn | Init weights | Dataset train | Validation mAP@50 | Validation mAP@50:95 | Test mAP@50 | Test mAP@50:95 | Ghi chú |
+|---|---|---|---:|---:|---:|---:|---|
+| Stage 1 main train | `yolo11x.pt` | Sliced train + full valid/test | ~0.445 | ~0.253 | ~0.427 | ~0.239 | Best khoảng epoch 96 |
+| Stage 2 fine-tune | Stage 1 `best.pt` | Sliced train + full valid/test, no mosaic | ~0.454 | ~0.262 | TBD | TBD | Log hiện có đến khoảng epoch 7/8 |
+| Stage 3 full-image fine-tune | Stage 2 `best.pt` | Full-image train/valid/test | TBD | TBD | TBD | TBD | Dataset đã upload branch `full-image-v1` |
 
-> **Warning:** Không nên báo cáo metric trước khi training trên dataset deduped hoàn tất và sinh `results.csv`. Dataset final đã có trên Hugging Face, nhưng metric mô hình phải lấy từ job train/evaluate thật để tránh báo cáo sai lệch.
+> **Warning:** Metric Stage 3 không được suy đoán trước. Chỉ cập nhật sau khi job fine-tune full-image sinh `results.csv` và chạy xong `--val-test`.
 
 ---
 
@@ -838,6 +928,7 @@ Dự án đã xây dựng một pipeline Computer Vision nghiêm túc cho bài t
 - Chọn một final model duy nhất: YOLO11x detect 1-class `fire_smoke`, mục tiêu mAP@50 ≥ 70%.
 - Tạo data audit report với biểu đồ, bảng CSV và montage ảnh.
 - Thiết kế chiến lược train 2-stage trên NVIDIA L4.
+- Bổ sung Stage 3 fine-tune trên full-image dataset để giảm mismatch giữa train sliced và valid/test full image.
 - Bổ sung profile A100 40GB để train ở `imgsz=1280`, ưu tiên mAP và vẫn giữ batch an toàn.
 
 ### 11.1 Kết Quả Đạt Được
@@ -850,14 +941,19 @@ Các kết quả engineering hiện có:
 - Giảm 1,719 ảnh detect-level và 2,855 object lặp sau preprocessing.
 - Valid/test giữ ảnh gốc, không slicing.
 - Detect dataset đã validate 28,279 objects.
+- Stage 1 YOLO11x detect đã tạo checkpoint nền `best.pt` với validation mAP@50 khoảng 0.445 và test mAP@50 khoảng 0.427.
+- Stage 2 fine-tune từ Stage 1 `best.pt` cải thiện nhẹ, log hiện có đạt validation mAP@50 khoảng 0.454 và mAP@50:95 khoảng 0.262.
+- Full-image dataset mới đã được rebuild từ raw, loại duplicate/near-duplicate, không slicing, gồm 11,517 ảnh và 23,263 object sau convert detect.
+- Full-image dataset đã upload lên Hugging Face branch `full-image-v1` dưới file `fire_vn_yolo11seg_v1_fullimg.zip`.
 - Report data audit đã sinh đầy đủ artifact cho báo cáo.
 
 ### 11.2 Hạn Chế
 
-- Metric training cuối chưa được cập nhật trong báo cáo vì cần chạy Vertex job trên dataset final.
+- Metric Stage 3 full-image fine-tune chưa được cập nhật vì cần chạy job mới trên branch `full-image-v1`.
 - Near-duplicate bằng dHash là heuristic, vẫn cần QA thủ công với một số cluster.
 - Mask khói mờ vẫn có tính chủ quan.
 - Dataset vẫn lệch về group g01 dù đã dedupe.
+- Kết quả Stage 1/2 cho thấy bài toán khó hơn kỳ vọng ban đầu; mục tiêu mAP@50 ≥ 0.70 cần thêm audit lỗi, tuning threshold hoặc thử nghiệm chiến lược dữ liệu khác nếu Stage 3 vẫn plateau.
 - Một số cảnh hard negative có thể chưa đủ đa dạng.
 
 ### 11.3 Bài Học Kỹ Thuật
@@ -961,6 +1057,58 @@ python scripts/generate_yolo11_data_report.py \
 
 ```bash
 bash scripts/run_vertex_detect_final.sh
+```
+
+### Stage 2 Fine-Tune Từ Stage 1 Best
+
+```bash
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_finetune_l4 \
+  --init-weights runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt \
+  --skip-download \
+  --skip-convert \
+  --epochs 40 \
+  --val-test \
+  --test-imgsz 1024 \
+  --exist-ok
+```
+
+### Rebuild Full-Image Dataset Từ Raw
+
+```bash
+python scripts/prepare_yolo11_seg_dataset.py \
+  --raw-root datasets/raw \
+  --output work/fire_vn_yolo11seg_v1_fullimg \
+  --skip-slicing \
+  --dedupe-near-duplicates \
+  --near-duplicate-threshold 2 \
+  --make-zip \
+  --overwrite
+```
+
+### Upload Full-Image Dataset Lên Hugging Face Branch Mới
+
+```bash
+python scripts/upload_hf_dataset.py \
+  --repo-id thanhhoangnvbg/fire-vn-yolo11seg-v1 \
+  --zip-path work/fire_vn_yolo11seg_v1_fullimg.zip \
+  --revision full-image-v1 \
+  --create-branch
+```
+
+### Stage 3 Fine-Tune Lại Với Full Image
+
+```bash
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_fullimage_finetune_l4 \
+  --dataset-revision full-image-v1 \
+  --dataset-zip fire_vn_yolo11seg_v1_fullimg.zip \
+  --seg-dataset-dir work/fire_vn_yolo11seg_v1_fullimg \
+  --det-dataset-dir work/fire_vn_yolo11det_fire_smoke_fullimg \
+  --init-weights runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt \
+  --val-test \
+  --test-imgsz 1024 \
+  --exist-ok
 ```
 
 ### Train Trên Vertex A100 40GB

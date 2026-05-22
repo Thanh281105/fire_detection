@@ -26,6 +26,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create the dataset repo as private if it does not exist.",
     )
+    parser.add_argument(
+        "--revision",
+        help="Optional branch name to upload to, e.g. full-image-v1.",
+    )
+    parser.add_argument(
+        "--create-branch",
+        action="store_true",
+        help="Create --revision as a branch before uploading.",
+    )
     return parser.parse_args()
 
 
@@ -53,13 +62,32 @@ def main() -> None:
         private=args.private,
         exist_ok=True,
     )
+    if args.create_branch:
+        if not args.revision:
+            raise SystemExit("--create-branch requires --revision")
+        api.create_branch(
+            repo_id=args.repo_id,
+            branch=args.revision,
+            repo_type="dataset",
+            exist_ok=True,
+        )
+
+    upload_kwargs = {
+        "path_or_fileobj": str(args.zip_path),
+        "path_in_repo": args.zip_path.name,
+        "repo_id": args.repo_id,
+        "repo_type": "dataset",
+    }
+    if args.revision:
+        upload_kwargs["revision"] = args.revision
+
     api.upload_file(
-        path_or_fileobj=str(args.zip_path),
-        path_in_repo=args.zip_path.name,
-        repo_id=args.repo_id,
-        repo_type="dataset",
+        **upload_kwargs,
     )
-    print(f"uploaded {args.zip_path} to https://huggingface.co/datasets/{args.repo_id}")
+    url = f"https://huggingface.co/datasets/{args.repo_id}"
+    if args.revision:
+        url = f"{url}/tree/{args.revision}"
+    print(f"uploaded {args.zip_path} to {url}")
 
 
 if __name__ == "__main__":

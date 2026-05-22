@@ -83,6 +83,36 @@ PROFILES: dict[str, dict[str, Any]] = {
         "project": "runs/final",
         "name": "yolo11x_detect_fire_smoke_l4_finetune",
     },
+    "vertex_detect_fullimage_finetune_l4": {
+        "model": "runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt",
+        "imgsz": 1024,
+        "epochs": 25,
+        "batch": 4,
+        "patience": 10,
+        "workers": 8,
+        "cache": "disk",
+        "optimizer": "AdamW",
+        "lr0": 0.00005,
+        "lrf": 0.01,
+        "warmup_epochs": 1,
+        "close_mosaic": 0,
+        "mosaic": 0.0,
+        "mixup": 0.0,
+        "copy_paste": 0.0,
+        "degrees": 0.0,
+        "translate": 0.02,
+        "scale": 0.15,
+        "fliplr": 0.50,
+        "dropout": 0.0,
+        "single_cls": True,
+        "box": 8.0,
+        "cls": 0.35,
+        "dfl": 1.5,
+        "amp": True,
+        "save_period": 5,
+        "project": "runs/final",
+        "name": "yolo11x_detect_fire_smoke_l4_fullimage_finetune",
+    },
     "vertex_detect_a100": {
         "model": "yolo11x.pt",
         "imgsz": 1280,
@@ -153,6 +183,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profile", choices=sorted(PROFILES), default="vertex_detect_final")
     parser.add_argument("--dataset-repo-id", default=DATASET_REPO_ID)
     parser.add_argument("--dataset-zip", default=DATASET_ZIP_NAME)
+    parser.add_argument(
+        "--dataset-revision",
+        help="Optional Hugging Face dataset revision/branch/tag to download from.",
+    )
     parser.add_argument("--work-dir", type=Path, default=Path("work"))
     parser.add_argument("--seg-dataset-dir", type=Path, default=None)
     parser.add_argument("--det-dataset-dir", type=Path, default=None)
@@ -244,7 +278,12 @@ def download_and_extract_seg_dataset(args: argparse.Namespace) -> Path:
 
     token = os.environ.get("HF_TOKEN")
     args.work_dir.mkdir(parents=True, exist_ok=True)
-    repo_files = list_repo_files(args.dataset_repo_id, repo_type="dataset", token=token)
+    repo_files = list_repo_files(
+        args.dataset_repo_id,
+        repo_type="dataset",
+        revision=args.dataset_revision,
+        token=token,
+    )
     dataset_zip = resolve_repo_zip(args.dataset_zip, repo_files)
     download_kwargs = {
         "repo_id": args.dataset_repo_id,
@@ -252,6 +291,8 @@ def download_and_extract_seg_dataset(args: argparse.Namespace) -> Path:
         "repo_type": "dataset",
         "local_dir": args.work_dir / "hf_cache",
     }
+    if args.dataset_revision:
+        download_kwargs["revision"] = args.dataset_revision
     if token:
         download_kwargs["token"] = token
     zip_path = hf_hub_download(**download_kwargs)
