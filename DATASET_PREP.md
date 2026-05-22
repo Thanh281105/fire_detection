@@ -1,8 +1,9 @@
-# Fire/Smoke YOLO11-Seg Dataset Prep
+# Fire/Smoke YOLO11 Dataset Prep
 
-This repo now has a reusable prep script for the 5-group Roboflow COCO-seg
-exports. It ignores any old Roboflow train/valid/test split, creates a balanced
-new split, slices only the training set, and outputs YOLO segmentation format.
+This repo has a reusable prep script for the 5-group Roboflow COCO-seg exports.
+It ignores any old Roboflow train/valid/test split, creates a deterministic
+balanced split, slices selected training groups only, and outputs YOLO
+segmentation format.
 
 ## Expected Input
 
@@ -48,7 +49,7 @@ On Kaggle, Colab, or Vertex:
 pip install -q pillow huggingface_hub
 ```
 
-## Build Dataset
+## Build Sliced-Train Dataset
 
 ```bash
 python scripts/prepare_yolo11_seg_dataset.py \
@@ -76,7 +77,8 @@ datasets/fire_vn_yolo11seg_v1/
   metadata/split_summary.csv
 ```
 
-Use `data.yaml` directly with Ultralytics YOLO11 segmentation training.
+Use `data.yaml` directly with Ultralytics YOLO11 segmentation training or as the
+source for detection conversion.
 
 ## Build 1-Class Detection Dataset
 
@@ -107,8 +109,8 @@ Valid/test stay as original images for fair mAP and false-positive evaluation.
 
 See `TRAINING_PIPELINE.md`. The preferred flow is:
 
-- Kaggle: run `kaggle_s` and optionally `kaggle_m` only as baselines.
-- Vertex: run `vertex_final` as the accuracy-first final model.
+- Stage 1: `vertex_detect_final`
+- Stage 2: `vertex_detect_finetune_l4`
 
 ## Upload Prepared Dataset to Hugging Face
 
@@ -121,8 +123,8 @@ python scripts/upload_hf_dataset.py \
   --zip-path datasets/fire_vn_yolo11seg_v1.zip
 ```
 
-Only upload again when data or preprocessing changes. Use new output names such
-as `fire_vn_yolo11seg_v2` for the next version.
+Only upload again when data or preprocessing changes. Use a new output name for
+the next version.
 
 ## Checks
 

@@ -1,109 +1,173 @@
 # Fire/Smoke Detection VN
 
-Pipeline for preparing a Vietnam-focused fire/smoke segmentation dataset and
-training YOLO11 models. The current final target is a 1-class detection model:
-`fire_smoke mAP50(B) >= 70`, stable training, reproducibility, and easy
-fine-tuning.
+End-to-end Computer Vision pipeline for Vietnam-focused fire/smoke alerting.
+The final deployment target is a single YOLO11 detection model with one class:
+`fire_smoke`.
 
-## Current Structure
+The project keeps segmentation masks as source annotations, then converts them
+to 1-class detection boxes for the final YOLO11x detector.
+
+## Repository Structure
 
 ```text
 scripts/
-  prepare_yolo11_seg_dataset.py  # build YOLO11-seg dataset from 5 Roboflow zips
-  prepare_yolo11_detect_dataset.py # convert seg polygons to 1-class detect boxes
-  upload_hf_dataset.py           # upload prepared dataset zip to Hugging Face
-  train_yolo11_seg.py            # Kaggle/Vertex training entrypoint
-  train_yolo11_detect.py         # final 1-class detection training entrypoint
-  run_vertex_final.sh            # Vertex final training launcher
-  run_vertex_detect_final.sh     # Vertex final detection launcher
+  prepare_yolo11_seg_dataset.py      # build YOLO11-seg dataset from raw COCO-seg exports
+  prepare_yolo11_detect_dataset.py   # convert YOLO-seg polygons/boxes to 1-class detect labels
+  upload_hf_dataset.py               # upload prepared dataset zip to Hugging Face
+  train_yolo11_detect.py             # main YOLO11 detect training/fine-tune entrypoint
+  evaluate_yolo11_detect_sliced.py   # sliced inference evaluation on original images
+  evaluate_yolo11_detect_groups.py   # per-group evaluation helper
+  generate_yolo11_data_report.py     # data audit figures/tables
+  plot_yolo11_stage_metrics.py       # Stage 1/2 training plots
+  run_vertex_detect_final.sh         # legacy launcher for Stage 1/2 detect flow
+  run_vertex_final.sh                # legacy segmentation baseline launcher
 
-notebooks/
-  vertex_final_training.ipynb     # optional cell-based Vertex launcher
+reports/
+  report.pdf                         # final compiled report
+  report.tex                         # final editable LaTeX source
+  data_audit_deduped/                # generated data audit artifacts
 
-datasets/
-  raw/                           # original 5 Roboflow export zips
-  fire_vn_yolo11seg_v1/          # prepared ready-to-train dataset
-  fire_vn_yolo11det_fire_smoke_v2/ # generated 1-class detect dataset
-  fire_vn_yolo11seg_v1.zip       # uploaded HF artifact
-
-DATASET_PREP.md                  # dataset prep details
-TRAINING_PIPELINE.md             # training profiles and commands
+DATASET_PREP.md                      # dataset build details
+TRAINING_PIPELINE.md                 # training commands and profiles
 requirements-dataset-prep.txt
 requirements-training.txt
 ```
 
-## Dataset
+## Hugging Face Dataset
 
-Prepared dataset repo:
+Dataset repo:
 
 ```text
-https://hf.co/datasets/thanhhoangnvbg/fire-vn-yolo11seg-v1
+https://huggingface.co/datasets/thanhhoangnvbg/fire-vn-yolo11seg-v1
 ```
 
-The dataset was built from 5 groups:
+Main prepared artifact:
 
-- `01_positive_standard`
-- `02_Alley_Context`
-- `03_Negative_Hard_Samples`
-- `04_SAHI_Small_Objects`
-- `05_Ambient_Context_Null`
+| Branch | File | Purpose |
+|---|---|---|
+| `main` | `fire_vn_yolo11seg_v1.zip` | Prepared dataset with train-only slicing |
 
-The prep script ignores old Roboflow splits, creates a deterministic balanced
-split, slices only `train`, and keeps `valid/test` as original images for fair
-evaluation.
+The prep flow rebuilds the split from raw exports, removes duplicate or
+near-duplicate images, slices selected training groups only, and keeps
+validation/test images in original full resolution for fair evaluation.
 
-## Final Detection Training
+Local `datasets/`, `work/`, and `runs/` folders are intentionally excluded from
+the cleaned submission tree because the dataset and checkpoints are stored on
+Hugging Face.
 
-Install:
+## Training Plan
+
+The current final pipeline has two stages:
+
+| Stage | Init weights | Dataset | Profile | Purpose |
+|---|---|---|---|---|
+| Stage 1 | `yolo11x.pt` | sliced train, original valid/test | `vertex_detect_final` | main detector training |
+| Stage 2 | Stage 1 `best.pt` | same dataset, no mosaic/mixup | `vertex_detect_finetune_l4` | low-LR refinement |
+
+Observed checkpoints so far:
+
+| Stage | Best observed validation mAP50 | Notes |
+|---|---:|---|
+| Stage 1 | ~0.445 | best around epoch 96 |
+| Stage 2 | ~0.454 | best seen around epoch 7 |
+
+Stage 2 plateaued, so the next useful work is error analysis: false negatives,
+per-group metrics, sample prediction montages, and inference threshold/NMS
+tuning.
+
+## Run Training
+
+Install training dependencies:
 
 ```bash
 pip install -q -r requirements-training.txt
 ```
 
-No HF token is required for downloading the public dataset.
-
-Build the 1-class detection dataset locally:
+Run Stage 1:
 
 ```bash
-python scripts/prepare_yolo11_detect_dataset.py --overwrite
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_final \
+  --val-test
 ```
 
-Vertex final detection model:
+Run Stage 2 from Stage 1 best:
 
 ```bash
-bash scripts/run_vertex_detect_final.sh
+python scripts/train_yolo11_detect.py \
+  --profile vertex_detect_finetune_l4 \
+  --init-weights runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt \
+  --skip-download \
+  --skip-convert \
+  --val-test \
+  --test-imgsz 1024 \
+  --exist-ok
 ```
 
-The final detection profile uses `yolo11x.pt`, `imgsz=1024`, `batch=4`,
-`epochs=180`, and a single class: `fire_smoke`. If L4 runs out of memory, retry
-with `BATCH=2`.
+## Plot Stage Curves
 
-Legacy segmentation training remains available for comparison:
+After Stage 1 and Stage 2 produce `results.csv`, generate report figures:
 
 ```bash
-bash scripts/run_vertex_final.sh
+python scripts/plot_yolo11_stage_metrics.py \
+  --stage1 runs/final/yolo11x_detect_fire_smoke_l4_final/results.csv \
+  --stage2 runs/final/yolo11x_detect_fire_smoke_l4_finetune/results.csv \
+  --output reports/figures/stage1_stage2_training
 ```
 
-See `TRAINING_PIPELINE.md` for L4 commands, OOM fallbacks, model upload, and
-the legacy segmentation notes.
+Outputs include per-stage loss/metric plots, a Stage 1 vs Stage 2 mAP
+comparison, and a best-metric CSV summary.
 
-## Evaluation Target
+## Files To Sync To Vertex/Jupyter
+
+Sync these files together to avoid import/version mismatch:
+
+```text
+scripts/prepare_yolo11_detect_dataset.py
+scripts/train_yolo11_detect.py
+scripts/plot_yolo11_stage_metrics.py
+```
+
+Quick sanity checks on Vertex:
+
+```bash
+grep -n "def convert_dataset" scripts/prepare_yolo11_detect_dataset.py
+python -m py_compile scripts/prepare_yolo11_detect_dataset.py scripts/train_yolo11_detect.py
+```
+
+## Evaluation
 
 Primary metric:
 
 ```text
-single-class fire_smoke mAP50(B) >= 0.70
+single-class fire_smoke mAP50(B)
 ```
 
-Secondary metrics:
+Secondary checks:
 
-- recall and precision for `fire_smoke`
+- recall and precision at deployment confidence thresholds
 - false positives on hard negatives and ambient null images
 - small-object recall on group `04`
+- sliced inference evaluation on unchanged original test labels
+
+Sliced test evaluation:
+
+```bash
+python scripts/evaluate_yolo11_detect_sliced.py \
+  --model runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt \
+  --dataset datasets/fire_vn_yolo11det_fire_smoke_v2 \
+  --split test \
+  --imgsz 1024 \
+  --slice-size 768 \
+  --overlap 0.25 \
+  --include-full-image \
+  --output reports/sliced_eval/stage2_test
+```
 
 ## Notes
 
-- Legacy Kaggle/segmentation runs are baselines/benchmarks only.
-- Vertex `vertex_detect_final` is the main accuracy-focused L4 run.
-- Keep `best.pt`, `last.pt`, `training_config.json`, plots, and result CSVs for
-  reproducibility and future fine-tuning.
+- `prepare_yolo11_detect_dataset.py` must be the converter file and contain
+  `def convert_dataset(...)`.
+- `train_yolo11_detect.py` imports `convert_dataset` from the converter file.
+- Legacy segmentation scripts remain for comparison only; the final model path
+  is YOLO11x detect 1-class `fire_smoke`.

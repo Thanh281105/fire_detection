@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--revision",
-        help="Optional branch name to upload to, e.g. full-image-v1.",
+        help="Optional branch name to upload to, e.g. experiment-v2.",
     )
     parser.add_argument(
         "--create-branch",

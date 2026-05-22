@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Optional environment variables:
 #   GCS_DIR=gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_final
-#   HF_MODEL_REPO_ID=thanhhoangnvbg/fire-vn-yolo11x-detect-fire-smoke-l4-final
+#   HF_MODEL_REPO_ID=thanhhoangnvbg/fire-detection-yolo11-stage12
 #   HF_PRIVATE_MODEL=1
 #   IMG_SIZE=1024
 #   BATCH=4
@@ -14,8 +14,8 @@ set -euo pipefail
 #   AMP=0
 #   RUN_FINETUNE=1
 #   FINETUNE_GCS_DIR=gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_finetune
-#   PROFILE=vertex_detect_a100
-#   FINETUNE_PROFILE=vertex_detect_finetune_a100
+#   PROFILE=vertex_detect_final
+#   FINETUNE_PROFILE=vertex_detect_finetune_l4
 #   FINETUNE_EPOCHS=60
 #   TEST_IMG_SIZE=1024
 #   VAL_TTA=0
@@ -33,27 +33,15 @@ fi
 
 PROFILE="${PROFILE:-vertex_detect_final}"
 if [[ -z "${FINETUNE_PROFILE:-}" ]]; then
-  if [[ "${PROFILE}" == "vertex_detect_a100" ]]; then
-    FINETUNE_PROFILE="vertex_detect_finetune_a100"
-  else
-    FINETUNE_PROFILE="vertex_detect_finetune_l4"
-  fi
+  FINETUNE_PROFILE="vertex_detect_finetune_l4"
 fi
 
 if [[ -z "${GCS_DIR:-}" ]]; then
-  if [[ "${PROFILE}" == "vertex_detect_a100" ]]; then
-    GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_a100_final"
-  else
-    GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_final"
-  fi
+  GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_final"
 fi
 
 if [[ -z "${FINETUNE_GCS_DIR:-}" ]]; then
-  if [[ "${FINETUNE_PROFILE}" == "vertex_detect_finetune_a100" ]]; then
-    FINETUNE_GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_a100_finetune"
-  else
-    FINETUNE_GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_finetune"
-  fi
+  FINETUNE_GCS_DIR="gs://fire_detection_final/yolo11x_detect_fire_smoke_l4_finetune"
 fi
 RUN_FINETUNE="${RUN_FINETUNE:-1}"
 
@@ -140,11 +128,7 @@ if [[ "${RUN_FINETUNE}" == "1" ]]; then
   if [[ -n "${FINETUNE_INIT_WEIGHTS:-}" ]]; then
     ARGS+=(--init-weights "${FINETUNE_INIT_WEIGHTS}")
   elif [[ -z "${FINETUNE_MODEL:-}" ]]; then
-    if [[ "${FINETUNE_PROFILE}" == "vertex_detect_finetune_a100" ]]; then
-      ARGS+=(--init-weights "runs/final/yolo11x_detect_fire_smoke_a100_final/weights/best.pt")
-    else
-      ARGS+=(--init-weights "runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt")
-    fi
+    ARGS+=(--init-weights "runs/final/yolo11x_detect_fire_smoke_l4_final/weights/best.pt")
   fi
 
   if [[ -n "${TEST_IMG_SIZE:-}" ]]; then
