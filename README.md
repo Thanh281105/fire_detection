@@ -55,6 +55,33 @@ Local `datasets/`, `work/`, and `runs/` folders are intentionally excluded from
 the cleaned submission tree because the dataset and checkpoints are stored on
 Hugging Face.
 
+## Inference UI
+
+Install inference dependencies:
+
+```bash
+pip install -r requirements-inference.txt
+```
+
+Download and extract the Stage 1/2 checkpoint artifact:
+
+```bash
+hf download thanhhoangnvbg/fire-detection-yolo11-stage12 model_artifacts_stage12_complete.tar.gz --local-dir weights/fire-detection-yolo11-stage12
+tar -xzf weights/fire-detection-yolo11-stage12/model_artifacts_stage12_complete.tar.gz -C weights/fire-detection-yolo11-stage12
+```
+
+Run the Streamlit app:
+
+```bash
+streamlit run app.py
+```
+
+The app defaults to the Stage 2 finetune checkpoint:
+
+```text
+weights/fire-detection-yolo11-stage12/runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt
+```
+
 ## Training Plan
 
 The current final pipeline has two stages:

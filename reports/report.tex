@@ -161,7 +161,7 @@ YOLO & You Only Look Once object detector family \\
 \addcontentsline{toc}{chapter}{Executive Summary}
 This report presents a complete Data Mining and Computer Vision pipeline for detecting fire and smoke in diverse Vietnamese visual contexts. The project does not simply fine-tune an existing detector on a clean benchmark. Instead, the main contribution is the construction of a traceable end-to-end workflow: noisy multi-source data collection, custom segmentation labeling, label quality control, duplicate and near-duplicate removal, group-aware dataset design, train-only slicing for rare small-object cases, YOLO11x detection training, and systematic error analysis.
 
-The final model direction is a single-class YOLO11x detector named \code{fire\_smoke}. Although the original labels are built as segmentation masks, the deployment-oriented model is formulated as detection because an alerting system needs fast and stable bounding-box outputs more than pixel-perfect masks. The training was conducted on rented NVIDIA L4 GPU infrastructure, with an experimental cost of approximately \(1{,}000{,}000\) VND. This cost produced real checkpoints, training curves, validation metrics, full-image test metrics, sliced inference ablations, and qualitative prediction samples.
+The final model direction is a single-class YOLO11x detector named \code{fire\_smoke}. Although the original labels are built as segmentation masks, the deployment-oriented model is formulated as detection because an alerting system needs fast and stable bounding-box outputs more than pixel-perfect masks. The training was conducted on rented NVIDIA L4 GPU infrastructure, with an experimental cost of approximately \(1{,}000{,}000\) VND. This cost produced real checkpoints, training curves, validation metrics, full-image test metrics, sliced inference ablations, qualitative prediction samples, and a local Streamlit interface for testing inference with the packaged Stage 1/2 model artifact.
 
 The best Stage 2 validation result reached \metric{mAP@50 = 0.454} and \metric{mAP@50:95 = 0.262}. On the original full-image test split, the same checkpoint achieved \metric{Precision = 0.552}, \metric{Recall = 0.430}, \metric{mAP@50 = 0.421}, and \metric{mAP@50:95 = 0.240}. These metrics are below the original target of mAP@50 \(\geq 0.70\), but they are substantially more informative than the earlier sliced-only result. The sliced inference ablation reached only mAP@50 \(=0.152\), showing that the current slicing and merging protocol is not yet tuned. The report therefore emphasizes an academically honest conclusion: the current model is not deployment-ready, but the dataset, pipeline, and error analysis establish a strong foundation for active learning, relabeling, hard-negative expansion, and threshold/NMS optimization.
 
@@ -206,6 +206,7 @@ The original technical target was to approach mAP@50 \(\geq 0.70\) for a one-cla
     \item a curated dataset with 13,896 images and 28,279 annotated objects after deduplication;
     \item a two-stage YOLO11x training workflow;
     \item validation, full-image test, per-group, and sliced inference evaluation artifacts;
+    \item a published Hugging Face model artifact and a local Streamlit inference UI for checkpoint testing;
     \item a clear diagnosis of false negatives, hard-negative false positives, and sliced inference weaknesses.
 \end{itemize}
 
@@ -239,6 +240,28 @@ The prepared dataset is published on Hugging Face at:
 \end{center}
 
 The submission package does not include the local dataset files because they are large and can be regenerated from the public dataset repository using the provided preparation scripts. This keeps the submitted archive focused on the report, code, and reproducible processing pipeline.
+
+\section{Model Artifact and Inference Interface}
+The Stage 1 and Stage 2 training outputs are packaged separately from the source code because checkpoint files are large. The model artifact is published on Hugging Face at:
+
+\begin{center}
+\url{https://huggingface.co/thanhhoangnvbg/fire-detection-yolo11-stage12}
+\end{center}
+
+The downloadable artifact is \code{model\_artifacts\_stage12\_complete.tar.gz}. After extraction, the default inference checkpoint is the Stage 2 fine-tuned model:
+
+\begin{center}
+\artifactpath{weights/fire-detection-yolo11-stage12/runs/final/yolo11x_detect_fire_smoke_l4_finetune/weights/best.pt}
+\end{center}
+
+For practical testing, the project includes a Streamlit interface in \code{app.py}. The interface loads the checkpoint, accepts uploaded images or bundled sample images, allows confidence, IoU, image-size, and device settings to be adjusted, and displays both the original image and the annotated prediction output. This UI is intended as a reproducible inference test tool, not as a production monitoring system.
+
+\begin{figure}[H]
+\centering
+\safeincludegraphics[width=0.98\textwidth]{figures/streamlit_inference_ui.png}
+\caption{Streamlit inference interface for testing the packaged Stage 2 YOLO11 checkpoint on \code{Chay-Rung-3.jpg}.}
+\label{fig:streamlit-inference-ui}
+\end{figure}
 
 \section{Dataset Group Design}
 Instead of treating all images as a flat pool, the dataset is organized into five groups. This design makes it possible to diagnose exactly where the model succeeds or fails.
@@ -648,7 +671,7 @@ at (0,0) {Architecture of the Final YOLO11x Fire/Smoke Detection Pipeline};
 \node[metric, below=1.55cm of backbone, xshift=-0.8cm] (stage1) {Stage 1\\moderate aug.};
 \node[metric, right=1.1cm of stage1] (stage2) {Stage 2\\no mosaic, low LR};
 \node[metric, right=1.1cm of stage2] (eval) {Evaluation\\mAP@50, P, R, F1};
-\node[metric, right=1.1cm of eval] (deploy) {Deployment\\ONNX / TensorRT};
+\node[metric, right=1.1cm of eval] (deploy) {Artifact + UI\\HF / Streamlit};
 
 \draw[arrow] (stage1.east) -- (stage2.west);
 \draw[arrow] (stage2.east) -- (eval.west);
@@ -996,7 +1019,7 @@ The next iteration should prioritize data and evaluation rather than blindly tra
 
 % ===================== CHAPTER 8 =====================
 \chapter{Conclusion}
-This project built a serious Computer Vision and Data Mining pipeline for fire and smoke detection. The strongest contributions are not limited to the final YOLO11x checkpoint. The project collected multi-source data, created segmentation annotations from image-only sources, designed meaningful data groups, removed near-duplicates, prevented leakage through source-level splitting, generated data audit artifacts, trained on rented NVIDIA L4 compute, and performed group-wise and sliced inference error analysis.
+This project built a serious Computer Vision and Data Mining pipeline for fire and smoke detection. The strongest contributions are not limited to the final YOLO11x checkpoint. The project collected multi-source data, created segmentation annotations from image-only sources, designed meaningful data groups, removed near-duplicates, prevented leakage through source-level splitting, generated data audit artifacts, trained on rented NVIDIA L4 compute, packaged the Stage 1/2 checkpoints on Hugging Face, implemented a local Streamlit inference interface, and performed group-wise and sliced inference error analysis.
 
 The best Stage 2 validation result achieved mAP@50 \(=0.454\), below the initial target of mAP@50 \(\geq 0.70\). The full-image test benchmark achieved Precision \(=0.552\), Recall \(=0.430\), mAP@50 \(=0.421\), and mAP@50:95 \(=0.240\). This is the main test result. The sliced test ablation reached mAP@50 \(=0.152\) and recall@0.25 \(=0.143\), showing that the current sliced inference configuration is not ready for deployment.
 
@@ -1004,6 +1027,6 @@ The main lesson is that fire/smoke detection is a data-centric problem. Compute 
 
 \section*{Final Statement}
 \addcontentsline{toc}{section}{Final Statement}
-Although the final metric is not high, the project is valuable as a rigorous experimental pipeline. It honestly documents the work required to build a dataset, train a modern detector, pay for real GPU experiments, and diagnose why the model underperforms. The remaining weaknesses are now explicit: missing confidence/NMS sweeps, missing quantitative annotation-quality measurement, background false-positive measurement, and a small-object sliced-inference protocol gap. This makes the report stronger than a simple high-score demo because it shows both engineering capability and scientific honesty.
+Although the final metric is not high, the project is valuable as a rigorous experimental pipeline. It honestly documents the work required to build a dataset, train a modern detector, pay for real GPU experiments, package a checkpoint artifact, provide a usable inference test UI, and diagnose why the model underperforms. The remaining weaknesses are now explicit: missing confidence/NMS sweeps, missing quantitative annotation-quality measurement, background false-positive measurement, and a small-object sliced-inference protocol gap. This makes the report stronger than a simple high-score demo because it shows both engineering capability and scientific honesty.
 
 \end{document}
